@@ -6,9 +6,7 @@ use teloxide::{prelude::*, utils::command::BotCommands};
 async fn main() {
     pretty_env_logger::init();
     log::info!("Starting command bot...");
-
     let bot = Bot::from_env();
-
     teloxide::commands_repl(bot, answer, Command::ty()).await;
 }
 
@@ -24,12 +22,8 @@ enum Command {
     NewBook,
 }
 
-// async fn parse_book(epub_file_path: String, desired_page: usize) -> String {
-fn parse_book() -> Vec<String> {
-    let epub_file_path = String::from("gone_girl.epub");
-    let desired_page = 10;
-
-    let doc = EpubDoc::new(epub_file_path);
+fn parse_book(file_path: &str, desired_page: usize) -> Vec<String> {
+    let doc = EpubDoc::new(file_path);
     assert!(doc.is_ok());
 
     let mut doc = doc.unwrap();
@@ -42,20 +36,37 @@ fn parse_book() -> Vec<String> {
 
     match doc.set_current_page(desired_page) {
         Ok(_) => (),
-        Err(e) => response_text.push(format!(
-            "error setting current page to {desired_page:?}: {e:?}"
-        )),
+        Err(e) => {
+            response_text.push(format!(
+                "error setting current page to {desired_page:?}: {e:?}"
+            ));
+            return response_text;
+        }
     };
 
-    match doc.get_current_str() {
-        // Ok(v) => response_text.append(&mut vec![format!("\n{}", from_read(v.as_bytes(), v.chars().count()))]),
-        Ok(page) => {
-            let page_content = from_read(page.as_bytes(), page.chars().count());
-            println!("string size: {}", page.chars().count());
-            response_text.push(page_content[..1024].to_string());
+    let page: String = doc.get_current_str().unwrap();
+    let page_string_len: usize = page.len();
+    let page_content: String = from_read(page.as_bytes(), page_string_len);
+    let page_content_bytes_len: usize = page_content.as_bytes().len();
+
+    let step_size: usize = 4096;
+    let mut l: usize = 0;
+    let mut r: usize;
+    if step_size > page_content_bytes_len {
+        r = page_content_bytes_len - 1
+    } else {
+        r = step_size
+    }
+
+    while page_content_bytes_len >= r {
+        response_text.push(page_content[l..r].to_string());
+        l = r;
+        if r + step_size > page_content_bytes_len && r < page_content_bytes_len {
+            r += page_content_bytes_len - r;
+            continue;
         }
-        Err(e) => response_text.push(format!("error getting page content: {e:?}")),
-    };
+        r += step_size;
+    }
 
     return response_text;
 }
@@ -67,11 +78,14 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 .await?
         }
         Command::NewBook => {
-            let mut msg_text = String::from("");
-            for book_page in parse_book() {
-                msg_text = book_page;
-            }
-            bot.send_message(msg.chat.id, msg_text).await?
+            let split_book_page = parse_book("gone_girl.epub", 9);
+            // println!("----------------\nMessage 1: {}", split_book_page[0]);
+            // println!("----------------\nMessage 2: {}", split_book_page[1]);
+
+            bot.send_message(msg.chat.id, split_book_page[0].as_str())
+                .await?;
+            bot.send_message(msg.chat.id, split_book_page[1].as_str())
+                .await?
         }
     };
 
