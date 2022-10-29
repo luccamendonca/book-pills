@@ -1,38 +1,79 @@
-use std::env;
 use epub::doc::EpubDoc;
 use html2text::from_read;
+use teloxide::{prelude::*, utils::command::BotCommands};
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    let arg_file_path = args.get(1);
-    let arg_desired_page = args.get(2);
+#[tokio::main]
+async fn main() {
+    pretty_env_logger::init();
+    log::info!("Starting command bot...");
 
-    print!("\n");
-    println!("File path: {}", arg_file_path.unwrap());
-    println!("Desired page: {}", arg_desired_page.unwrap());
+    let bot = Bot::from_env();
 
+    teloxide::commands_repl(bot, answer, Command::ty()).await;
+}
 
-    let doc = EpubDoc::new(arg_file_path.as_deref().unwrap());
+#[derive(BotCommands, Clone)]
+#[command(
+    rename_rule = "lowercase",
+    description = "Testing commands are supported:"
+)]
+enum Command {
+    #[command(description = "display this text.")]
+    Help,
+    #[command(description = "handle book file")]
+    NewBook,
+}
+
+// async fn parse_book(epub_file_path: String, desired_page: usize) -> String {
+fn parse_book() -> Vec<String> {
+    let epub_file_path = String::from("gone_girl.epub");
+    let desired_page = 10;
+
+    let doc = EpubDoc::new(epub_file_path);
     assert!(doc.is_ok());
+
     let mut doc = doc.unwrap();
     let title = doc.mdata("title");
     print!("\n");
     println!("The book title is: {}", title.unwrap());
     println!("The book is {} pages long.", doc.resources.len());
 
-    let desired_page = match arg_desired_page.unwrap().parse::<usize>() {
-        Ok(i) => i,
-        Err(_e) => 0,
-    };
+    let mut response_text: Vec<String> = vec![];
 
     match doc.set_current_page(desired_page) {
         Ok(_) => (),
-        Err(e) => println!("error setting current page to {desired_page:?}: {e:?}")
-    }
+        Err(e) => response_text.push(format!(
+            "error setting current page to {desired_page:?}: {e:?}"
+        )),
+    };
 
-    // let page_content = doc.get_current_str();
     match doc.get_current_str() {
-        Ok(v) => println!(">> Page {} content:\n\n{}", desired_page, from_read(v.as_bytes(), v.chars().count())),
-        Err(e) => println!("error getting page content: {e:?}"),
-    }
+        // Ok(v) => response_text.append(&mut vec![format!("\n{}", from_read(v.as_bytes(), v.chars().count()))]),
+        Ok(page) => {
+            let page_content = from_read(page.as_bytes(), page.chars().count());
+            println!("string size: {}", page.chars().count());
+            response_text.push(page_content[..1024].to_string());
+        }
+        Err(e) => response_text.push(format!("error getting page content: {e:?}")),
+    };
+
+    return response_text;
+}
+
+async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
+    match cmd {
+        Command::Help => {
+            bot.send_message(msg.chat.id, Command::descriptions().to_string())
+                .await?
+        }
+        Command::NewBook => {
+            let mut msg_text = String::from("");
+            for book_page in parse_book() {
+                msg_text = book_page;
+            }
+            bot.send_message(msg.chat.id, msg_text).await?
+        }
+    };
+
+    Ok(())
 }

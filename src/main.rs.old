@@ -1,0 +1,34 @@
+use std::env;
+use epub::doc::EpubDoc;
+use html2text::from_read;
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let arg_file_path = args.get(1);
+    let arg_desired_page = args.get(2);
+
+    print!("\n");
+    println!("File path: {}", arg_file_path.unwrap());
+    println!("Desired page: {}", arg_desired_page.unwrap());
+
+
+    let doc = EpubDoc::new(arg_file_path.as_deref().unwrap());
+    assert!(doc.is_ok());
+    let mut doc = doc.unwrap();
+    let title = doc.mdata("title");
+    print!("\n");
+    println!("The book title is: {}", title.unwrap());
+    println!("The book is {} pages long.", doc.resources.len());
+
+    let desired_page: usize = arg_desired_page.unwrap().parse().unwrap_or(0);
+    match doc.set_current_page(desired_page) {
+        Ok(_) => (),
+        Err(e) => println!("error setting current page to {desired_page:?}: {e:?}")
+    };
+
+    // let page_content = doc.get_current_str();
+    match doc.get_current_str() {
+        Ok(v) => print!("\n{}", from_read(v.as_bytes(), v.chars().count())),
+        Err(e) => println!("error getting page content: {e:?}"),
+    };
+}
